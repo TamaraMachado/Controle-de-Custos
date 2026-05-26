@@ -108,17 +108,29 @@ export default function CustosDiretos({ projetoId }: Props) {
     if (!deleteWho.trim()) { setDeleteError("Informe quem está excluindo."); return; }
     if (!deleteTarget?.id) return;
     setDeleting(true);
-    await supabase.from("custos_diretos").delete().eq("id", deleteTarget.id);
-    await supabase.from("custos_diretos_historico").insert([{
+
+    // Capture all values locally before any state changes
+    const id = deleteTarget.id;
+    const descricao = deleteTarget.descricao;
+    const codigo = deleteTarget.codigo;
+    const who = deleteWho;
+    const obs = deleteObs;
+
+    const { error: delErr } = await supabase.from("custos_diretos").delete().eq("id", id);
+    if (delErr) { console.error("Erro ao excluir:", delErr); setDeleting(false); return; }
+
+    const { error: histErr } = await supabase.from("custos_diretos_historico").insert([{
       projeto_id: projetoId,
-      custo_direto_id: deleteTarget.id,
-      descricao_item: deleteTarget.descricao || deleteTarget.codigo || deleteTarget.id,
+      custo_direto_id: id,
+      descricao_item: descricao || codigo || id,
       campo: "Linha excluída",
-      valor_anterior: deleteTarget.descricao,
+      valor_anterior: descricao || codigo,
       valor_novo: "-",
-      alterado_por: deleteWho,
-      observacao: deleteObs,
+      alterado_por: who,
+      observacao: obs,
     }]);
+    if (histErr) console.error("Erro ao registrar histórico:", histErr);
+
     setDeleteTarget(null);
     setDeleting(false);
     await loadData();
