@@ -116,9 +116,7 @@ export default function CustosDiretos({ projetoId }: Props) {
     const who = deleteWho;
     const obs = deleteObs;
 
-    const { error: delErr } = await supabase.from("custos_diretos").delete().eq("id", id);
-    if (delErr) { console.error("Erro ao excluir:", delErr); setDeleting(false); return; }
-
+    // ⚠️ Registrar histórico ANTES de deletar (evita falha de foreign key)
     const { error: histErr } = await supabase.from("custos_diretos_historico").insert([{
       projeto_id: projetoId,
       custo_direto_id: id,
@@ -130,6 +128,10 @@ export default function CustosDiretos({ projetoId }: Props) {
       observacao: obs,
     }]);
     if (histErr) console.error("Erro ao registrar histórico:", histErr);
+
+    // Deletar depois do histórico registrado
+    const { error: delErr } = await supabase.from("custos_diretos").delete().eq("id", id);
+    if (delErr) console.error("Erro ao excluir:", delErr);
 
     setDeleteTarget(null);
     setDeleting(false);
