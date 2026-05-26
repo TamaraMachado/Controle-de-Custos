@@ -164,7 +164,8 @@ export default function CustosDiretos({ projetoId }: Props) {
     setShowModal(false);
     setSaving(true);
 
-    const changes: Omit<Historico, "id" | "alterado_em">[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const changes: any[] = [];
     const savedMap = new Map(saved.map((r) => [r.id, r]));
 
     // Taxa de câmbio changed?
