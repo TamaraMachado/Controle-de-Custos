@@ -4,8 +4,10 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   Plus, Trash2, Pencil, X, Save, DollarSign,
-  Loader2, History, ChevronDown, ChevronUp, AlertCircle
+  Loader2, History, ChevronDown, ChevronUp, AlertCircle,
+  Package
 } from "lucide-react";
+import EstoqueModal from "@/components/EstoqueModal";
 
 interface CustoDireto {
   id?: string;
@@ -70,6 +72,8 @@ export default function CustosDiretos({ projetoId }: Props) {
   const [deleteObs, setDeleteObs] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  // Estoque modal
+  const [estoqueItem, setEstoqueItem] = useState<CustoDireto | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -256,12 +260,20 @@ export default function CustosDiretos({ projetoId }: Props) {
                       {isEditing ? (
                         <button onClick={() => removeEditRow(idx)} className="w-6 h-6 rounded flex items-center justify-center transition-all hover:bg-red-500/20" style={{ color: "#5a607a" }}><Trash2 size={12} /></button>
                       ) : (
-                        <button onClick={() => openDeleteModal(row)}
-                          className="w-6 h-6 rounded flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 hover:bg-red-500/20"
-                          style={{ color: "#ef4444" }}
-                          title="Excluir linha">
-                          <Trash2 size={12} />
-                        </button>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {row.id && (
+                            <button onClick={() => setEstoqueItem(row)}
+                              className="w-6 h-6 rounded flex items-center justify-center hover:bg-white/10 transition-all"
+                              style={{ color: "#7585fd" }} title="Controle de estoque">
+                              <Package size={12} />
+                            </button>
+                          )}
+                          <button onClick={() => openDeleteModal(row)}
+                            className="w-6 h-6 rounded flex items-center justify-center hover:bg-red-500/20 transition-all"
+                            style={{ color: "#ef4444" }} title="Excluir linha">
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -390,6 +402,15 @@ export default function CustosDiretos({ projetoId }: Props) {
             </div>
           </div>
         </div>
+      )}
+      {/* ── Estoque Modal ── */}
+      {estoqueItem && estoqueItem.id && (
+        <EstoqueModal
+          projetoId={projetoId}
+          custoDiretoId={estoqueItem.id}
+          descricao={estoqueItem.descricao || estoqueItem.codigo}
+          onClose={() => setEstoqueItem(null)}
+        />
       )}
     </div>
   );
