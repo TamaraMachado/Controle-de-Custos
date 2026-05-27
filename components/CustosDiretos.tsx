@@ -101,8 +101,20 @@ export default function CustosDiretos({ projetoId }: Props) {
   const removeEditRow = (idx: number) => setEditing((prev) => prev.filter((_, i) => i !== idx));
 
   // ── Delete in view mode ───────────────────────────────────────────────────
-  const openDeleteModal = (row: CustoDireto) => {
-    setDeleteTarget(row);
+  const openDeleteModal = async (row: CustoDireto) => {
+    if (!row.id) return;
+    // Verificar se há movimentações de estoque
+    const { count } = await supabase
+      .from("estoque_movimentacoes")
+      .select("id", { count: "exact", head: true })
+      .eq("custo_direto_id", row.id);
+
+    if (count && count > 0) {
+      // Bloquear exclusão — já tem movimentações de estoque
+      setDeleteTarget({ ...row, _bloqueado: true } as any);
+    } else {
+      setDeleteTarget(row);
+    }
     setDeleteWho("");
     setDeleteObs("");
     setDeleteError("");
@@ -337,43 +349,75 @@ export default function CustosDiretos({ projetoId }: Props) {
       </div>
 
       {/* ── Delete Modal ── */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }} onClick={(e) => e.target === e.currentTarget && setDeleteTarget(null)}>
-          <div className="w-full max-w-md rounded-2xl animate-scaleIn" style={{ background: "#161822", border: "1px solid rgba(239,68,68,0.2)", boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
-            <div className="px-6 py-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)" }}>
-                  <Trash2 size={15} style={{ color: "#ef4444" }} />
+      {deleteTarget && (() => {
+        const bloqueado = !!(deleteTarget as any)._bloqueado;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }} onClick={(e) => e.target === e.currentTarget && setDeleteTarget(null)}>
+            <div className="w-full max-w-md rounded-2xl animate-scaleIn" style={{ background: "#161822", border: `1px solid ${bloqueado ? "rgba(245,158,11,0.3)" : "rgba(239,68,68,0.2)"}`, boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
+              <div className="px-6 py-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+                    style={{ background: bloqueado ? "rgba(245,158,11,0.15)" : "rgba(239,68,68,0.15)", border: `1px solid ${bloqueado ? "rgba(245,158,11,0.3)" : "rgba(239,68,68,0.3)"}` }}>
+                    {bloqueado ? <Package size={15} style={{ color: "#f59e0b" }} /> : <Trash2 size={15} style={{ color: "#ef4444" }} />}
+                  </div>
+                  <div>
+                    <h3 className="text-base font-semibold" style={{ fontFamily: "var(--font-sora)", color: "#e8eaf0" }}>
+                      {bloqueado ? "Exclusão bloqueada" : "Excluir linha"}
+                    </h3>
+                    <p className="text-xs mt-0.5" style={{ color: "#5a607a" }}>
+                      {bloqueado ? "Este item possui movimentações de estoque" : "Esta ação será registrada no histórico"}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-base font-semibold" style={{ fontFamily: "var(--font-sora)", color: "#e8eaf0" }}>Excluir linha</h3>
-                  <p className="text-xs mt-0.5" style={{ color: "#5a607a" }}>Esta ação será registrada no histórico</p>
-                </div>
               </div>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="px-3 py-2 rounded-lg text-xs" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: "#fca5a5" }}>
-                Excluindo: <strong>{deleteTarget.descricao || deleteTarget.codigo}</strong>
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-2" style={{ color: "#8890a8" }}>Excluído por *</label>
-                <input className="input-field" placeholder="Seu nome" value={deleteWho} onChange={(e) => setDeleteWho(e.target.value)} autoFocus />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-2" style={{ color: "#8890a8" }}>Motivo / Observação</label>
-                <textarea className="input-field resize-none" rows={2} placeholder="Por que está excluindo esta linha?" value={deleteObs} onChange={(e) => setDeleteObs(e.target.value)} />
-              </div>
-              {deleteError && <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg" style={{ color: "#ff6b6b", background: "rgba(255,107,107,0.1)", border: "1px solid rgba(255,107,107,0.2)" }}><AlertCircle size={13} />{deleteError}</div>}
-              <div className="flex gap-3 pt-1">
-                <button onClick={() => setDeleteTarget(null)} className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "#8890a8" }}>Cancelar</button>
-                <button onClick={confirmDelete} disabled={deleting} className="flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all" style={{ background: "linear-gradient(135deg,#ef4444,#dc2626)", color: "white" }}>
-                  {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}Confirmar exclusão
-                </button>
+              <div className="p-6 space-y-4">
+                {bloqueado ? (
+                  <>
+                    <div className="px-4 py-3 rounded-xl" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
+                      <p className="text-sm font-semibold mb-1.5" style={{ color: "#f59e0b" }}>
+                        ⚠️ Não é possível excluir &quot;{deleteTarget.descricao || deleteTarget.codigo}&quot;
+                      </p>
+                      <p className="text-xs leading-relaxed" style={{ color: "#8890a8" }}>
+                        Este item já possui movimentações de estoque registradas. Para preservar o histórico de rastreabilidade, a exclusão está bloqueada.
+                      </p>
+                    </div>
+                    <div className="px-4 py-3 rounded-xl text-xs space-y-1" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                      <p className="font-semibold mb-2" style={{ color: "#e8eaf0" }}>O que você pode fazer:</p>
+                      <p style={{ color: "#8890a8" }}>✏️ Editar a descrição, código ou valores do item</p>
+                      <p style={{ color: "#8890a8" }}>📊 Zerar a quantidade planejada se não for mais usar</p>
+                      <p style={{ color: "#8890a8" }}>📦 Ver o histórico de estoque pelo ícone na linha</p>
+                    </div>
+                    <button onClick={() => setDeleteTarget(null)} className="w-full py-2.5 rounded-xl text-sm font-medium transition-all" style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)", color: "#e8eaf0" }}>
+                      Entendido
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="px-3 py-2 rounded-lg text-xs" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: "#fca5a5" }}>
+                      Excluindo: <strong>{deleteTarget.descricao || deleteTarget.codigo}</strong>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-2" style={{ color: "#8890a8" }}>Excluído por *</label>
+                      <input className="input-field" placeholder="Seu nome" value={deleteWho} onChange={(e) => setDeleteWho(e.target.value)} autoFocus />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-2" style={{ color: "#8890a8" }}>Motivo / Observação</label>
+                      <textarea className="input-field resize-none" rows={2} placeholder="Por que está excluindo esta linha?" value={deleteObs} onChange={(e) => setDeleteObs(e.target.value)} />
+                    </div>
+                    {deleteError && <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg" style={{ color: "#ff6b6b", background: "rgba(255,107,107,0.1)", border: "1px solid rgba(255,107,107,0.2)" }}><AlertCircle size={13} />{deleteError}</div>}
+                    <div className="flex gap-3 pt-1">
+                      <button onClick={() => setDeleteTarget(null)} className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "#8890a8" }}>Cancelar</button>
+                      <button onClick={confirmDelete} disabled={deleting} className="flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all" style={{ background: "linear-gradient(135deg,#ef4444,#dc2626)", color: "white" }}>
+                        {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}Confirmar exclusão
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Save Modal ── */}
       {showModal && (
