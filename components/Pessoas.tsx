@@ -99,7 +99,7 @@ export default function Pessoas({ projetoId }: Props) {
   const totalPessoas = plano.reduce((s, r) => s + r.quantidade, 0);
 
   // Agrupa realizado por mês
-  const mesList = [...new Set(realizado.map(r => r.mes))].sort((a, b) => b.localeCompare(a));
+  const mesList = Array.from(new Set(realizado.map(r => r.mes))).sort((a, b) => b.localeCompare(a));
   const realizadoPorMes = (mes: string) => {
     const rows = realizado.filter(r => r.mes === mes);
     return {
