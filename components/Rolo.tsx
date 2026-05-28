@@ -88,10 +88,27 @@ export default function Rolo({ projetoId }: Props) {
       supabase.from("rolo_trocas").select("*").eq("projeto_id", projetoId).order("data_troca", { ascending: false }),
       supabase.from("rolo_historico").select("*").eq("projeto_id", projetoId).order("alterado_em", { ascending: false }).limit(60),
     ]);
-    setMateriais(mats ?? []);
+
+    let materiaisFinais = mats ?? [];
+
+    // Auto-criar materiais padrão com valores pré-preenchidos se não existirem
+    const defaults = [
+      { nome: "Material carbonoso", durabilidade_historica: 6000, custo_rolo: 236000, taxa_cambio: 5.80 },
+      { nome: "Material ferroso",   durabilidade_historica: 8000, custo_rolo: 250000, taxa_cambio: 5.80 },
+    ];
+
+    const faltando = defaults.filter(d => !materiaisFinais.find(m => m.nome === d.nome));
+    if (faltando.length > 0) {
+      const { data: criados } = await supabase.from("rolo_materiais").insert(
+        faltando.map(d => ({ ...d, projeto_id: projetoId }))
+      ).select();
+      if (criados) materiaisFinais = [...materiaisFinais, ...criados].sort((a, b) => a.nome.localeCompare(b.nome));
+    }
+
+    setMateriais(materiaisFinais);
     setTrocas(troc ?? []);
     setHistorico(hist ?? []);
-    if (mats && mats.length > 0 && !materialAtivo) setMaterialAtivo(mats[0].id);
+    if (materiaisFinais.length > 0 && !materialAtivo) setMaterialAtivo(materiaisFinais[0].id);
     setLoading(false);
   }, [projetoId, materialAtivo]);
 
@@ -271,15 +288,6 @@ export default function Rolo({ projetoId }: Props) {
               ? { background: "rgba(85,96,248,0.2)", border: "1.5px solid rgba(85,96,248,0.5)", color: "#e8eaf0" }
               : { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#8890a8" }}>
             <RotateCcw size={11} className="inline mr-1.5" />{m.nome}
-          </button>
-        ))}
-
-        {/* Criar padrões se não existem */}
-        {MATERIAIS_PADRAO.filter(n => !materiais.find(m => m.nome === n)).map(n => (
-          <button key={n} onClick={() => criarMaterial(n)}
-            className="px-4 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5"
-            style={{ background: "rgba(255,255,255,0.03)", border: "1px dashed rgba(255,255,255,0.15)", color: "#5a607a" }}>
-            <Plus size={11} />{n}
           </button>
         ))}
 
