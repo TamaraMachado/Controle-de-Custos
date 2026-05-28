@@ -9,14 +9,16 @@ import Rolo from "@/components/Rolo";
 import SGA from "@/components/SGA";
 import Resumo from "@/components/Resumo";
 import Frete from "@/components/Frete";
+import Producao from "@/components/Producao";
 import {
   ArrowLeft, BarChart3, Zap, Users, Briefcase, Wrench,
   Wind, Truck, RotateCcw, FlaskConical, MoreHorizontal,
-  Package, Receipt, ChevronRight, PieChart,
+  Package, Receipt, ChevronRight, PieChart, Factory,
 } from "lucide-react";
 
 const ABAS = [
   { id: "resumo", label: "Resumo", icon: PieChart },
+  { id: "producao", label: "Produção", icon: Factory },
   { id: "custos-diretos", label: "Custos Diretos", icon: BarChart3 },
   { id: "utilidades", label: "Utilidades", icon: Zap },
   { id: "pessoas", label: "Pessoas", icon: Users },
@@ -134,6 +136,7 @@ export default function ProjetoPage() {
             </div>
 
             {abaAtiva === "resumo" ? <Resumo projetoId={id} />
+            : abaAtiva === "producao" ? <Producao projetoId={id} />
             : abaAtiva === "custos-diretos" ? <CustosDiretos projetoId={id} />
             : abaAtiva === "pessoas" ? <Pessoas projetoId={id} />
             : abaAtiva === "sga" ? <SGA projetoId={id} />
