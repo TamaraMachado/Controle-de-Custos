@@ -93,7 +93,7 @@ export default function SGA({ projetoId }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  const totalPlan = savedPlan.reduce((s, r) => s + r.custo, 0);
+  const totalPlan = savedPlan.reduce((s, r) => s + r.horas * r.custo, 0);
   const meses = Array.from(new Set(apontamentos.map(a => a.mes.slice(0,7)))).sort((a,b) => b.localeCompare(a));
   const mesAtivo = mesSelecionado || meses[0] || "";
   const aptsMes = apontamentos.filter(a => a.mes.slice(0,7) === mesAtivo);
@@ -182,7 +182,7 @@ export default function SGA({ projetoId }: Props) {
             <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-                  {["Função / Cargo","Atividade desempenhada","Horas/mês","Custo (R$/mês)",""].map(h => (
+                  {["Função / Cargo","Atividade desempenhada","Horas/mês","Custo (R$/h)","Total R$/mês",""].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold" style={{ color: "#8890a8" }}>{h}</th>
                   ))}
                 </tr>
@@ -210,7 +210,10 @@ export default function SGA({ projetoId }: Props) {
                     </td>
                     <td className="px-4 py-2.5">
                       {isEditingPlan ? <input type="number" step="0.01" value={row.custo} onChange={e => updatePlan(idx,"custo",parseFloat(e.target.value)||0)} className="w-28 bg-transparent outline-none text-xs px-2 py-1 rounded text-right focus:bg-white/5" style={{ color: "#e8eaf0" }} />
-                        : <span className="text-xs font-semibold" style={{ color: "#7585fd" }}>R$ {fmt(row.custo)}</span>}
+                        : <span className="text-xs font-semibold" style={{ color: "#8890a8" }}>R$ {fmt(row.custo, 4)}/h</span>}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className="text-xs font-bold" style={{ color: "#7585fd" }}>R$ {fmt(row.horas * row.custo)}</span>
                     </td>
                     <td className="px-3 py-2.5">
                       {isEditingPlan
@@ -225,7 +228,8 @@ export default function SGA({ projetoId }: Props) {
                   <tr style={{ borderTop: "2px solid rgba(255,255,255,0.1)", background: "rgba(85,96,248,0.06)" }}>
                     <td colSpan={2} className="px-4 py-3 text-right text-xs font-bold tracking-widest" style={{ color: "#8890a8" }}>TOTAL</td>
                     <td className="px-4 py-3 text-right text-xs font-semibold" style={{ color: "#8890a8" }}>{fmt(displayPlan.reduce((s,r) => s+r.horas,0),1)} h</td>
-                    <td className="px-4 py-3 text-right"><span className="text-sm font-bold" style={{ color: "#e8eaf0" }}>R$ {fmt(displayPlan.reduce((s,r) => s+r.custo,0))}</span></td>
+                    <td className="px-4 py-3" />
+                    <td className="px-4 py-3 text-right"><span className="text-sm font-bold" style={{ color: "#e8eaf0" }}>R$ {fmt(displayPlan.reduce((s,r) => s+(r.horas*r.custo),0))}</span></td>
                     <td />
                   </tr>
                 </tfoot>
