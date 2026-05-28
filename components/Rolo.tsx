@@ -97,20 +97,21 @@ export default function Rolo({ projetoId }: Props) {
       { nome: "Material ferroso",   durabilidade_historica: 8000, custo_rolo: 250000, taxa_cambio: 5.80 },
     ];
 
-    const faltando = defaults.filter(d => !materiaisFinais.find(m => m.nome === d.nome));
+    const faltando = defaults.filter(d => !materiaisFinais.find((m: Material) => m.nome === d.nome));
     if (faltando.length > 0) {
       const { data: criados } = await supabase.from("rolo_materiais").insert(
         faltando.map(d => ({ ...d, projeto_id: projetoId }))
       ).select();
-      if (criados) materiaisFinais = [...materiaisFinais, ...criados].sort((a, b) => a.nome.localeCompare(b.nome));
+      if (criados) materiaisFinais = [...materiaisFinais, ...criados].sort((a: Material, b: Material) => a.nome.localeCompare(b.nome));
     }
 
     setMateriais(materiaisFinais);
     setTrocas(troc ?? []);
     setHistorico(hist ?? []);
-    if (materiaisFinais.length > 0 && !materialAtivo) setMaterialAtivo(materiaisFinais[0].id);
+    // Só define o ativo se ainda não tiver sido definido
+    setMaterialAtivo(prev => prev || (materiaisFinais[0]?.id ?? ""));
     setLoading(false);
-  }, [projetoId, materialAtivo]);
+  }, [projetoId]); // ← removido materialAtivo das dependências
 
   useEffect(() => { load(); }, [load]);
 
