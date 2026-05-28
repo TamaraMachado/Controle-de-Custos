@@ -333,7 +333,7 @@ export default function Producao({ projetoId }: Props) {
                     className="input-field text-sm" placeholder={f.placeholder} />
                 ) : (
                   <div className="input-field text-sm font-semibold" style={{ color: "#e8eaf0", cursor: "default" }}>
-                    {fmt((planejado as Record<string,number>)[f.key], 4)}
+                    {fmt((planejado as any)[f.key], 4)}
                     {f.key !== "prod_hora" && <span style={{ color: "#5a607a" }}> %</span>}
                     {f.key === "prod_hora" && <span style={{ color: "#5a607a" }}> t/h</span>}
                   </div>
