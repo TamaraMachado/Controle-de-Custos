@@ -31,6 +31,7 @@ const fmtMes = (iso: string) => { try { const [y,m]=iso.split("-"); const ms=["J
 export default function ApontamentoPCP({ projetoId }: Props) {
   const [apontamentos, setApontamentos] = useState<Apontamento[]>([]);
   const [historico, setHistorico] = useState<Historico[]>([]);
+  const [sgaAtividades, setSgaAtividades] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showHistorico, setShowHistorico] = useState(false);
   const [mesFiltro, setMesFiltro] = useState(new Date().toISOString().slice(0, 7));
@@ -38,6 +39,7 @@ export default function ApontamentoPCP({ projetoId }: Props) {
   // Form novo
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ mes: new Date().toISOString().slice(0, 7), funcao: "", atividade: "", horas: "", registrado_por: "" });
+  const [atividadeNova, setAtividadeNova] = useState("");
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -57,14 +59,18 @@ export default function ApontamentoPCP({ projetoId }: Props) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: apts }, { data: hist }] = await Promise.all([
+    const [{ data: apts }, { data: hist }, { data: sgaPlan }] = await Promise.all([
       supabase.from("apontamento_horas").select("*").eq("projeto_id", projetoId)
         .order("mes", { ascending: false }).order("created_at", { ascending: false }),
       supabase.from("apontamento_historico").select("*").eq("projeto_id", projetoId)
         .order("alterado_em", { ascending: false }).limit(80),
+      supabase.from("sga_planejado").select("atividade").eq("projeto_id", projetoId),
     ]);
     setApontamentos(apts ?? []);
     setHistorico(hist ?? []);
+    // Atividades únicas do SG&A planejado (excluindo vazias)
+    const ativs = Array.from(new Set((sgaPlan ?? []).map((r: any) => r.atividade).filter(Boolean)));
+    setSgaAtividades(ativs);
     setLoading(false);
   }, [projetoId]);
 
@@ -77,24 +83,27 @@ export default function ApontamentoPCP({ projetoId }: Props) {
 
   // Salvar novo
   const salvar = async () => {
+    const atividadeFinal = form.atividade === "__nova__" ? atividadeNova.trim() : form.atividade;
     if (!form.funcao.trim()) { setFormError("Informe a função."); return; }
     if (!form.horas || parseFloat(form.horas) <= 0) { setFormError("Informe as horas."); return; }
     if (!form.registrado_por.trim()) { setFormError("Informe quem está registrando."); return; }
+    if (form.atividade === "__nova__" && !atividadeFinal) { setFormError("Digite a nova atividade."); return; }
     setSaving(true); setFormError("");
     const mesDate = form.mes + "-01";
     const { data: ins } = await supabase.from("apontamento_horas").insert([{
       projeto_id: projetoId, mes: mesDate,
-      funcao: form.funcao, atividade: form.atividade,
+      funcao: form.funcao, atividade: atividadeFinal,
       horas: parseFloat(form.horas), registrado_por: form.registrado_por,
     }]).select().single();
     if (ins) await supabase.from("apontamento_historico").insert([{
       projeto_id: projetoId, item_id: ins.id,
       descricao_item: form.funcao,
       campo: "Apontamento criado", valor_anterior: "—",
-      valor_novo: `${form.horas}h · ${form.funcao}`,
+      valor_novo: `${form.horas}h · ${atividadeFinal || form.funcao}`,
       alterado_por: form.registrado_por, observacao: "",
     }]);
     setForm(p => ({ ...p, funcao: "", atividade: "", horas: "", registrado_por: "" }));
+    setAtividadeNova("");
     setShowForm(false); setSaving(false);
     await load();
   };
@@ -188,8 +197,24 @@ export default function ApontamentoPCP({ projetoId }: Props) {
             </div>
             <div>
               <label className="block text-xs font-medium mb-1.5" style={{ color: "#8890a8" }}>Atividade</label>
-              <input value={form.atividade} onChange={e => setForm(p => ({ ...p, atividade: e.target.value }))}
-                className="input-field text-xs py-2" placeholder="Ex: Planejamento de produção" style={{ color: "#e8eaf0" }} />
+              <select
+                value={form.atividade}
+                onChange={e => { setForm(p => ({ ...p, atividade: e.target.value })); setAtividadeNova(""); }}
+                className="input-field text-xs py-2"
+                style={{ color: form.atividade ? "#e8eaf0" : "#5a607a" }}>
+                <option value="">Selecione...</option>
+                {sgaAtividades.map(a => <option key={a} value={a}>{a}</option>)}
+                <option value="__nova__">+ Nova atividade</option>
+              </select>
+              {form.atividade === "__nova__" && (
+                <input
+                  value={atividadeNova}
+                  onChange={e => setAtividadeNova(e.target.value)}
+                  className="input-field text-xs py-2 mt-2"
+                  placeholder="Digite a nova atividade"
+                  style={{ color: "#e8eaf0" }}
+                  autoFocus />
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium mb-1.5" style={{ color: "#8890a8" }}>Horas *</label>
