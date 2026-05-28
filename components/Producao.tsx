@@ -276,7 +276,7 @@ export default function Producao({ projetoId }: Props) {
   };
 
   // Agrupar paradas por data
-  const datasComParadas = [...new Set(paradas.map(p => p.data))].sort((a,b) => b.localeCompare(a));
+  const datasComParadas = Array.from(new Set(paradas.map(p => p.data))).sort((a,b) => b.localeCompare(a));
 
   if (loading) return <div className="flex items-center justify-center py-20" style={{ color: "#5a607a" }}><Loader2 size={20} className="animate-spin mr-2" />Carregando...</div>;
 
