@@ -484,7 +484,7 @@ export default function Producao({ projetoId }: Props) {
             <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                  {["Data","Toneladas (t)","H. Paradas","Disponib. Real","Registrado por","Observação",""].map(h => (
+                  {["Data","Toneladas (t)","H. Paradas","Disponib. Real","Prod/hora real","Registrado por","Observação",""].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold whitespace-nowrap" style={{ color: "#8890a8" }}>{h}</th>
                   ))}
                 </tr>
@@ -518,6 +518,19 @@ export default function Producao({ projetoId }: Props) {
                         </span>
                       </td>
                       <td className="px-4 py-2.5">
+                        {(() => {
+                          const horasDisp = 24 - hParadas;
+                          const prodHora = horasDisp > 0 ? p.toneladas / horasDisp : 0;
+                          const prodHoraPlan = planejado?.prod_hora ?? 0;
+                          return (
+                            <span className="text-xs font-semibold"
+                              style={{ color: prodHoraPlan > 0 && prodHora < prodHoraPlan ? "#ef4444" : "#7585fd" }}>
+                              {fmt(prodHora, 4)} t/h
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-4 py-2.5">
                         {isEdit ? <input value={editProdForm.registrado_por ?? ""} onChange={e => setEditProdForm(f => ({ ...f, registrado_por: e.target.value }))} className="bg-transparent outline-none text-xs px-2 py-1 rounded focus:bg-white/5 w-28" style={{ color: "#8890a8" }} />
                           : <span className="text-xs" style={{ color: "#8890a8" }}>{p.registrado_por}</span>}
                       </td>
@@ -547,7 +560,7 @@ export default function Producao({ projetoId }: Props) {
                   <tr style={{ borderTop: "2px solid rgba(255,255,255,0.1)", background: "rgba(34,197,94,0.06)" }}>
                     <td className="px-4 py-3 text-right text-xs font-bold tracking-widest" style={{ color: "#8890a8" }}>TOTAL</td>
                     <td className="px-4 py-3"><span className="text-base font-bold" style={{ color: "#22c55e" }}>{fmt(totalTonMes, 2)} t</span></td>
-                    <td colSpan={5} />
+                    <td colSpan={6} />
                   </tr>
                 </tfoot>
               )}
