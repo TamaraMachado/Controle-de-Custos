@@ -525,7 +525,7 @@ export default function Producao({ projetoId }: Props) {
                           return (
                             <span className="text-xs font-semibold"
                               style={{ color: prodHoraPlan > 0 && prodHora < prodHoraPlan ? "#ef4444" : "#7585fd" }}>
-                              {fmt(prodHora, 4)} t/h
+                              {fmt(prodHora, 1)} t/h
                             </span>
                           );
                         })()}
