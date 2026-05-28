@@ -10,10 +10,11 @@ import SGA from "@/components/SGA";
 import Resumo from "@/components/Resumo";
 import Frete from "@/components/Frete";
 import Producao from "@/components/Producao";
+import ApontamentoPCP from "@/components/ApontamentoPCP";
 import {
   ArrowLeft, BarChart3, Zap, Users, Briefcase, Wrench,
   Wind, Truck, RotateCcw, FlaskConical, MoreHorizontal,
-  Package, Receipt, ChevronRight, PieChart, Factory,
+  Package, Receipt, ChevronRight, PieChart, Factory, ClipboardList,
 } from "lucide-react";
 
 const ABAS = [
@@ -23,6 +24,7 @@ const ABAS = [
   { id: "utilidades", label: "Utilidades", icon: Zap },
   { id: "pessoas", label: "Pessoas", icon: Users },
   { id: "sga", label: "SG&A", icon: Briefcase },
+  { id: "apontamento-pcp", label: "Apontamento PCP", icon: ClipboardList },
   { id: "manutencao", label: "Manutenção", icon: Wrench },
   { id: "secagem-mp", label: "Secagem de MP", icon: Wind },
   { id: "logistica-interna", label: "Logística Interna", icon: Truck },
@@ -140,6 +142,7 @@ export default function ProjetoPage() {
             : abaAtiva === "custos-diretos" ? <CustosDiretos projetoId={id} />
             : abaAtiva === "pessoas" ? <Pessoas projetoId={id} />
             : abaAtiva === "sga" ? <SGA projetoId={id} />
+            : abaAtiva === "apontamento-pcp" ? <ApontamentoPCP projetoId={id} />
             : abaAtiva === "rolo" ? <Rolo projetoId={id} />
             : abaAtiva === "frete" ? <Frete projetoId={id} />
             : (
