@@ -58,8 +58,15 @@ export default function SGA({ projetoId }: Props) {
   // Apontamentos (custo real - somente leitura)
   const [apontamentos, setApontamentos] = useState<Apontamento[]>([]);
   const [apontHistorico, setApontHistorico] = useState<ApontHistorico[]>([]);
+  const [sgaCustoMap, setSgaCustoMap] = useState<Record<string, number>>({});
   const [mesSelecionado, setMesSelecionado] = useState("");
   const [showApontHistorico, setShowApontHistorico] = useState(false);
+  // Edição de custo/h por apontamento (só em SGA)
+  const [editandoCustoId, setEditandoCustoId] = useState<string | null>(null);
+  const [custoHoraEdit, setCustoHoraEdit] = useState("");
+  const [showCustoModal, setShowCustoModal] = useState(false);
+  const [custoEditWho, setCustoEditWho] = useState("");
+  const [savingCusto, setSavingCusto] = useState(false);
 
   // Modal salvar planejado
   const [showModal, setShowModal] = useState(false);
@@ -76,18 +83,23 @@ export default function SGA({ projetoId }: Props) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: plan }, { data: hist }, { data: apts }, { data: aptHist }] = await Promise.all([
+    const [{ data: plan }, { data: hist }, { data: apts }, { data: aptHist }, { data: sgaPlan }] = await Promise.all([
       supabase.from("sga_planejado").select("*").eq("projeto_id", projetoId).order("ordem"),
       supabase.from("sga_historico").select("*").eq("projeto_id", projetoId).order("alterado_em", { ascending: false }).limit(60),
       supabase.from("apontamento_horas").select("*").eq("projeto_id", projetoId)
         .order("mes", { ascending: false }).order("created_at", { ascending: false }),
       supabase.from("apontamento_historico").select("*").eq("projeto_id", projetoId)
         .order("alterado_em", { ascending: false }).limit(60),
+      supabase.from("sga_planejado").select("atividade, custo").eq("projeto_id", projetoId),
     ]);
     setSavedPlan(plan ?? []);
     setHistorico(hist ?? []);
     setApontamentos(apts ?? []);
     setApontHistorico(aptHist ?? []);
+    // Mapa atividade → custo/h do planejado
+    const map: Record<string, number> = {};
+    (sgaPlan ?? []).forEach((r: any) => { if (r.atividade) map[r.atividade] = r.custo; });
+    setSgaCustoMap(map);
     setLoading(false);
   }, [projetoId]);
 
@@ -97,7 +109,44 @@ export default function SGA({ projetoId }: Props) {
   const meses = Array.from(new Set(apontamentos.map(a => a.mes.slice(0,7)))).sort((a,b) => b.localeCompare(a));
   const mesAtivo = mesSelecionado || meses[0] || "";
   const aptsMes = apontamentos.filter(a => a.mes.slice(0,7) === mesAtivo);
+
+  // Retorna custo/h: do campo custo_hora do apontamento (se editado), senão do mapa do planejado
+  const getCustoHora = (a: Apontamento) => {
+    if ((a as any).custo_hora > 0) return (a as any).custo_hora;
+    return sgaCustoMap[a.atividade] ?? 0;
+  };
+
   const totalHorasMes = aptsMes.reduce((s, a) => s + a.horas, 0);
+  const totalCustoMes = aptsMes.reduce((s, a) => s + a.horas * getCustoHora(a), 0);
+
+  // Salvar custo/h editado em SGA
+  const iniciarEditCusto = (a: Apontamento) => {
+    setEditandoCustoId(a.id);
+    setCustoHoraEdit(String(getCustoHora(a) || ""));
+  };
+
+  const requestSaveCusto = () => { setCustoEditWho(""); setShowCustoModal(true); };
+
+  const confirmarSaveCusto = async () => {
+    if (!custoEditWho.trim() || !editandoCustoId) return;
+    setSavingCusto(true);
+    const orig = apontamentos.find(a => a.id === editandoCustoId)!;
+    const custoAnterior = getCustoHora(orig);
+    const custoNovo = parseFloat(custoHoraEdit) || 0;
+    // Atualiza custo_hora no apontamento
+    await supabase.from("apontamento_horas").update({ custo_hora: custoNovo } as any).eq("id", editandoCustoId);
+    // Registra no histórico do SGA
+    await supabase.from("sga_historico").insert([{
+      projeto_id: projetoId, item_id: editandoCustoId, tipo: "realizado",
+      descricao_item: `${orig.funcao} · ${orig.atividade || ""}`,
+      campo: "Custo/hora editado",
+      valor_anterior: `R$ ${fmt(custoAnterior, 4)}/h`,
+      valor_novo: `R$ ${fmt(custoNovo, 4)}/h`,
+      alterado_por: custoEditWho, observacao: "",
+    }]);
+    setEditandoCustoId(null); setShowCustoModal(false); setSavingCusto(false);
+    await load();
+  };
 
   // ── Planejado ─────────────────────────────────────────────────────────────
   const startEditPlan = () => { setEditingPlan(savedPlan.map(r => ({ ...r }))); setIsEditingPlan(true); };
@@ -274,35 +323,72 @@ export default function SGA({ projetoId }: Props) {
             <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-                  {["Função / Cargo","Atividade","Horas","Registrado por","Data registro"].map(h => (
+                  {["Função / Cargo","Atividade","Horas","Custo/h (R$)","Custo Total","Registrado por",""].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold" style={{ color: "#8890a8" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {aptsMes.length === 0 ? (
-                  <tr><td colSpan={5} className="text-center py-10 text-sm" style={{ color: "#5a607a" }}>
+                  <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: "#5a607a" }}>
                     {meses.length === 0
                       ? "Nenhum apontamento registrado. Use a aba Apontamento de Horas PCP para lançar."
                       : `Nenhum apontamento em ${mesAtivo ? fmtMes(mesAtivo) : ""}. Selecione outro mês ou registre na aba Apontamento de Horas PCP.`}
                   </td></tr>
-                ) : aptsMes.map(a => (
-                  <tr key={a.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
-                    onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.02)")}
-                    onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
-                    <td className="px-4 py-2.5"><span className="text-xs font-medium" style={{ color: "#e8eaf0" }}>{a.funcao}</span></td>
-                    <td className="px-4 py-2.5"><span className="text-xs" style={{ color: "#8890a8" }}>{a.atividade || "—"}</span></td>
-                    <td className="px-4 py-2.5"><span className="text-sm font-bold" style={{ color: "#22c55e" }}>{fmt(a.horas, 1)} h</span></td>
-                    <td className="px-4 py-2.5"><span className="text-xs" style={{ color: "#8890a8" }}>{a.registrado_por}</span></td>
-                    <td className="px-4 py-2.5"><span className="text-xs" style={{ color: "#5a607a" }}>{new Date(a.created_at).toLocaleDateString("pt-BR")}</span></td>
-                  </tr>
-                ))}
+                ) : aptsMes.map(a => {
+                  const custoH = getCustoHora(a);
+                  const custoTotal = a.horas * custoH;
+                  const isEditingCusto = editandoCustoId === a.id;
+                  const semCusto = custoH === 0;
+                  return (
+                    <tr key={a.id} className="group" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                      onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.02)")}
+                      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                      <td className="px-4 py-2.5"><span className="text-xs font-medium" style={{ color: "#e8eaf0" }}>{a.funcao}</span></td>
+                      <td className="px-4 py-2.5"><span className="text-xs" style={{ color: "#8890a8" }}>{a.atividade || "—"}</span></td>
+                      <td className="px-4 py-2.5"><span className="text-sm font-bold" style={{ color: "#22c55e" }}>{fmt(a.horas, 1)} h</span></td>
+                      <td className="px-4 py-2.5">
+                        {isEditingCusto ? (
+                          <div className="flex items-center gap-1">
+                            <input type="number" step="0.01" value={custoHoraEdit}
+                              onChange={e => setCustoHoraEdit(e.target.value)}
+                              className="w-24 bg-white/5 outline-none text-xs px-2 py-1 rounded border"
+                              style={{ color: "#e8eaf0", borderColor: "rgba(85,96,248,0.4)" }}
+                              autoFocus />
+                            <button onClick={requestSaveCusto} className="w-6 h-6 rounded flex items-center justify-center" style={{ background: "rgba(34,197,94,0.2)", color: "#22c55e" }}><Save size={10} /></button>
+                            <button onClick={() => setEditandoCustoId(null)} className="w-6 h-6 rounded flex items-center justify-center hover:bg-white/10" style={{ color: "#5a607a" }}><X size={10} /></button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold" style={{ color: semCusto ? "#ef4444" : "#7585fd" }}>
+                              {semCusto ? "— definir" : `R$ ${fmt(custoH, 2)}/h`}
+                            </span>
+                            <button onClick={() => iniciarEditCusto(a)}
+                              className="w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-white/10 transition-all"
+                              style={{ color: "#7585fd" }} title="Editar custo/h">
+                              <Pencil size={9} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className="text-xs font-bold" style={{ color: semCusto ? "#3d425a" : "#e8eaf0" }}>
+                          {semCusto ? "—" : `R$ ${fmt(custoTotal)}`}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5"><span className="text-xs" style={{ color: "#5a607a" }}>{a.registrado_por}</span></td>
+                      <td className="px-3 py-2.5" />
+                    </tr>
+                  );
+                })}
               </tbody>
               {aptsMes.length > 0 && (
                 <tfoot>
                   <tr style={{ borderTop: "2px solid rgba(255,255,255,0.1)", background: "rgba(34,197,94,0.06)" }}>
                     <td colSpan={2} className="px-4 py-3 text-right text-xs font-bold tracking-widest" style={{ color: "#8890a8" }}>TOTAL</td>
                     <td className="px-4 py-3"><span className="text-base font-bold" style={{ color: "#22c55e" }}>{fmt(totalHorasMes, 1)} h</span></td>
+                    <td className="px-4 py-3" />
+                    <td className="px-4 py-3"><span className="text-base font-bold" style={{ color: "#e8eaf0" }}>R$ {fmt(totalCustoMes)}</span></td>
                     <td colSpan={2} />
                   </tr>
                 </tfoot>
@@ -412,7 +498,28 @@ export default function SGA({ projetoId }: Props) {
         </div>
       )}
 
-      {deleteTarget && (
+      {showCustoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }} onClick={e => e.target === e.currentTarget && setShowCustoModal(false)}>
+          <div className="w-full max-w-md rounded-2xl animate-scaleIn" style={{ background: "#161822", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
+            <div className="px-6 py-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <h3 className="text-base font-semibold" style={{ color: "#e8eaf0" }}>Confirmar custo/hora</h3>
+              <p className="text-xs mt-1" style={{ color: "#5a607a" }}>
+                Novo custo: <strong style={{ color: "#7585fd" }}>R$ {fmt(parseFloat(custoHoraEdit)||0, 2)}/h</strong>
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div><label className="block text-xs font-medium mb-2" style={{ color: "#8890a8" }}>Alterado por *</label>
+                <input className="input-field" placeholder="Seu nome" value={custoEditWho} onChange={e => setCustoEditWho(e.target.value)} autoFocus /></div>
+              <div className="flex gap-3">
+                <button onClick={() => setShowCustoModal(false)} className="flex-1 py-2.5 rounded-xl text-sm font-medium" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "#8890a8" }}>Cancelar</button>
+                <button onClick={confirmarSaveCusto} disabled={!custoEditWho.trim() || savingCusto} className="flex-1 btn-primary justify-center py-2.5" style={{ background: "linear-gradient(135deg,#22c55e,#16a34a)", opacity: !custoEditWho.trim() ? 0.5 : 1 }}>
+                  {savingCusto ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}Confirmar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }} onClick={e => e.target === e.currentTarget && setDeleteTarget(null)}>
           <div className="w-full max-w-md rounded-2xl animate-scaleIn" style={{ background: "#161822", border: "1px solid rgba(239,68,68,0.2)", boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
             <div className="px-6 py-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
