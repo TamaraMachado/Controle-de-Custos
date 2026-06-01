@@ -11,6 +11,7 @@ import Resumo from "@/components/Resumo";
 import Frete from "@/components/Frete";
 import Producao from "@/components/Producao";
 import ApontamentoPCP from "@/components/ApontamentoPCP";
+import Impostos from "@/components/Impostos";
 import {
   ArrowLeft, BarChart3, Zap, Users, Briefcase, Wrench,
   Wind, Truck, RotateCcw, FlaskConical, MoreHorizontal,
@@ -145,6 +146,7 @@ export default function ProjetoPage() {
             : abaAtiva === "apontamento-pcp" ? <ApontamentoPCP projetoId={id} />
             : abaAtiva === "rolo" ? <Rolo projetoId={id} />
             : abaAtiva === "frete" ? <Frete projetoId={id} />
+            : abaAtiva === "impostos" ? <Impostos projetoId={id} />
             : (
               <div className="glass rounded-2xl p-12 flex flex-col items-center justify-center text-center" style={{ minHeight: "320px" }}>
                 <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "rgba(85,96,248,0.1)", border: "1px solid rgba(85,96,248,0.15)" }}>
