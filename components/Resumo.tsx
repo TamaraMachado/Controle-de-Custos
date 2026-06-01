@@ -35,13 +35,18 @@ export default function Resumo({ projetoId }: Props) {
     setLoading(true);
 
     // ── Produção ──────────────────────────────────────────────────────────
-    const [{ data: prodPlan }, { data: pessoasPlano }, { data: prodReal }, { data: impostosConfig }] = await Promise.all([
+    const [{ data: prodPlan }, { data: pessoasPlano }, { data: prodReal }] = await Promise.all([
       supabase.from("producao_planejada").select("*").eq("projeto_id", projetoId).single(),
       supabase.from("projeto_pessoas_plano").select("escala_id, planta_id, pessoas_escalas(nome)").eq("projeto_id", projetoId).single(),
       supabase.from("producao_real_diaria").select("toneladas, data").eq("projeto_id", projetoId),
-      supabase.from("impostos_config").select("estado_destino").eq("projeto_id", projetoId).single(),
     ]);
-    if (impostosConfig?.estado_destino) setEstadoDestino(impostosConfig.estado_destino);
+
+    // Impostos — busca separada para não quebrar o load se a tabela não existir ainda
+    try {
+      const { data: impostosConfig } = await supabase
+        .from("impostos_config").select("estado_destino").eq("projeto_id", projetoId).single();
+      if (impostosConfig?.estado_destino) setEstadoDestino(impostosConfig.estado_destino);
+    } catch (_) { /* tabela ainda não criada */ }
 
     const escalaNome = (pessoasPlano?.pessoas_escalas as any)?.nome ?? "";
     const diasMes = DIAS_ESCALA[escalaNome] ?? 30;
@@ -153,7 +158,6 @@ export default function Resumo({ projetoId }: Props) {
       { label: "Utilidades", planejado: 0, real: 0, aba: "utilidades" },
       { label: "Manutenção", planejado: 0, real: 0, aba: "manutencao" },
       { label: "Logística Interna", planejado: 0, real: 0, aba: "logistica-interna" },
-      { label: "Impostos", planejado: 0, real: 0, aba: "impostos" },
       { label: "Outros Custos", planejado: 0, real: 0, aba: "outros-custos" },
     ]);
 
@@ -267,7 +271,12 @@ export default function Resumo({ projetoId }: Props) {
       </div>
 
       {/* ── Impostos ── */}
-      {estadoDestino && totalPlan > 0 && (() => {
+      {totalPlan > 0 && (() => {
+        if (!estadoDestino) return (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-xl glass" style={{ border: "1px solid rgba(245,158,11,0.2)" }}>
+            <span className="text-xs" style={{ color: "#f59e0b" }}>⚠️ Configure o estado de destino na aba <strong>Impostos</strong> para ver os valores com imposto aqui.</span>
+          </div>
+        );
         const icms = ICMS_SP[estadoDestino] ?? 0;
         const totalPlanComImposto = calcComImposto(totalPlan, icms);
         const totalRealComImposto = totalReal > 0 ? calcComImposto(totalReal, icms) : 0;
