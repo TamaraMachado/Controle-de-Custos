@@ -20,16 +20,28 @@ export default function Resumo({ projetoId }: Props) {
   const [producaoPrevista, setProducaoPrevista] = useState(0);
   const [producaoRealTotal, setProducaoRealTotal] = useState(0);
   const [producaoRealMes, setProducaoRealMes] = useState(0);
+  // Impostos
+  const [estadoDestino, setEstadoDestino] = useState("");
+  const PIS_COFINS = 9.25;
+  const ICMS_SP: Record<string, number> = {
+    AC:7,AL:7,AM:7,AP:7,BA:7,CE:7,DF:7,ES:7,GO:7,MA:7,
+    MG:12,MS:7,MT:7,PA:7,PB:7,PE:7,PI:7,PR:12,RJ:12,RN:7,
+    RO:7,RR:7,RS:12,SC:12,SE:7,SP:18,TO:7,
+  };
+  const calcComImposto = (sem: number, icms: number) =>
+    sem / (1 - PIS_COFINS / 100) / (1 - icms / 100);
 
   const load = useCallback(async (mes?: string) => {
     setLoading(true);
 
     // ── Produção ──────────────────────────────────────────────────────────
-    const [{ data: prodPlan }, { data: pessoasPlano }, { data: prodReal }] = await Promise.all([
+    const [{ data: prodPlan }, { data: pessoasPlano }, { data: prodReal }, { data: impostosConfig }] = await Promise.all([
       supabase.from("producao_planejada").select("*").eq("projeto_id", projetoId).single(),
       supabase.from("projeto_pessoas_plano").select("escala_id, planta_id, pessoas_escalas(nome)").eq("projeto_id", projetoId).single(),
       supabase.from("producao_real_diaria").select("toneladas, data").eq("projeto_id", projetoId),
+      supabase.from("impostos_config").select("estado_destino").eq("projeto_id", projetoId).single(),
     ]);
+    if (impostosConfig?.estado_destino) setEstadoDestino(impostosConfig.estado_destino);
 
     const escalaNome = (pessoasPlano?.pessoas_escalas as any)?.nome ?? "";
     const diasMes = DIAS_ESCALA[escalaNome] ?? 30;
@@ -253,6 +265,40 @@ export default function Resumo({ projetoId }: Props) {
           </div>
         )}
       </div>
+
+      {/* ── Impostos ── */}
+      {estadoDestino && totalPlan > 0 && (() => {
+        const icms = ICMS_SP[estadoDestino] ?? 0;
+        const totalPlanComImposto = calcComImposto(totalPlan, icms);
+        const totalRealComImposto = totalReal > 0 ? calcComImposto(totalReal, icms) : 0;
+        const tonPlanComImposto = custoPlanPorTon > 0 ? calcComImposto(custoPlanPorTon, icms) : 0;
+        const tonRealComImposto = custoRealPorTon > 0 ? calcComImposto(custoRealPorTon, icms) : 0;
+        return (
+          <div className="glass rounded-2xl p-5" style={{ border: "1px solid rgba(239,68,68,0.2)" }}>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-2 h-2 rounded-full" style={{ background: "#ef4444" }} />
+              <span className="text-sm font-semibold" style={{ color: "#e8eaf0" }}>Com Impostos — Destino: {estadoDestino}</span>
+              <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444" }}>
+                PIS/COFINS 9,25% + ICMS {icms}%
+              </span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label: "Total plan. COM imposto", value: `R$ ${fmt(totalPlanComImposto)}`, sub: `+${fmt((totalPlanComImposto/totalPlan-1)*100,1)}%`, color: "#ef4444" },
+                { label: "Total real COM imposto", value: totalReal > 0 ? `R$ ${fmt(totalRealComImposto)}` : "—", sub: totalReal > 0 ? `+${fmt((totalRealComImposto/totalReal-1)*100,1)}%` : "", color: "#ef4444" },
+                { label: "Custo/ton plan. COM imposto", value: tonPlanComImposto > 0 ? `R$ ${fmt(tonPlanComImposto, 2)}/t` : "—", sub: "", color: "#f59e0b" },
+                { label: "Custo/ton real COM imposto", value: tonRealComImposto > 0 ? `R$ ${fmt(tonRealComImposto, 2)}/t` : "—", sub: "", color: "#f59e0b" },
+              ].map(item => (
+                <div key={item.label} className="rounded-xl px-4 py-3" style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.12)" }}>
+                  <p className="text-xs mb-1" style={{ color: "#5a607a" }}>{item.label}</p>
+                  <p className="text-base font-bold" style={{ color: item.color }}>{item.value}</p>
+                  {item.sub && <p className="text-xs mt-0.5" style={{ color: "#5a607a" }}>{item.sub}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Tabela por categoria ── */}
       <div className="glass rounded-2xl overflow-hidden">
