@@ -8,6 +8,15 @@ import {
   History, ChevronDown, ChevronUp, AlertCircle, Check
 } from "lucide-react";
 
+const DEFAULTS = [
+  { equipamento: "Pá carregadeira",      custo_unitario: 30000, quantidade: 1 },
+  { equipamento: "Caminhão basculante",  custo_unitario: 25000, quantidade: 1 },
+  { equipamento: "Mini pá carregadeira", custo_unitario: 15000, quantidade: 1 },
+  { equipamento: "Caminhão Poli",        custo_unitario: 25000, quantidade: 1 },
+  { equipamento: "Empilhadeira",         custo_unitario: 0,     quantidade: 1 },
+  { equipamento: "Manutenção",           custo_unitario: 50000, quantidade: 1 },
+  { equipamento: "Combustível",          custo_unitario: 50000, quantidade: 1 },
+  { equipamento: "Mob/desmob",           custo_unitario: 3000,  quantidade: 1 },
 // ─── Equipamentos pré-definidos ───────────────────────────────────────────────
 const EQUIPAMENTOS = [
   "Pá carregadeira",
@@ -101,7 +110,18 @@ export default function LogisticaInterna({ projetoId }: Props) {
       supabase.from("logistica_realizado").select("*").eq("projeto_id", projetoId).order("mes", { ascending: false }),
       supabase.from("logistica_historico").select("*").eq("projeto_id", projetoId).order("alterado_em", { ascending: false }).limit(80),
     ]);
-    setSavedPlan(plan ?? []);
+
+    let planejadoFinal = plan ?? [];
+
+    // Auto-seed defaults se ainda não houver nada cadastrado
+    if (planejadoFinal.length === 0) {
+      const { data: criados } = await supabase.from("logistica_planejado").insert(
+        DEFAULTS.map((d, i) => ({ ...d, projeto_id: projetoId, ordem: i }))
+      ).select();
+      if (criados) planejadoFinal = criados;
+    }
+
+    setSavedPlan(planejadoFinal);
     setRealizado(real ?? []);
     setHistorico(hist ?? []);
     setLoading(false);
