@@ -684,6 +684,8 @@ export default function LogisticaInterna({ projetoId }: Props) {
           </div>
         </div>
       )}
+
+      {showEditRealModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }} onClick={e => e.target === e.currentTarget && setShowEditRealModal(false)}>
           <div className="w-full max-w-md rounded-2xl animate-scaleIn" style={{ background: "#161822", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
             <div className="px-6 py-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}><h3 className="text-base font-semibold" style={{ color: "#e8eaf0" }}>Confirmar edição</h3></div>
