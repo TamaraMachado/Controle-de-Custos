@@ -86,6 +86,8 @@ export default function LogisticaInterna({ projetoId }: Props) {
 
   // Real — novo
   const [showNovoReal, setShowNovoReal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importWho, setImportWho] = useState("");
   const [realForm, setRealForm] = useState({ mes: new Date().toISOString().slice(0,7), equipamento: "", equipamentoNovo: "", custo_unitario: "", quantidade: "1", observacao: "" });
   const [realWho, setRealWho] = useState("");
   const [realError, setRealError] = useState("");
@@ -198,6 +200,38 @@ export default function LogisticaInterna({ projetoId }: Props) {
   // Equipamento resolvido (lida com "novo")
   const equip = (form: typeof realForm) =>
     form.equipamento === "__novo__" ? form.equipamentoNovo.trim() : form.equipamento;
+
+  // Auto-preenche custo do planejado ao selecionar equipamento
+  const handleEquipChange = (v: string) => {
+    const planItem = savedPlan.find(p => p.equipamento === v);
+    setRealForm(p => ({
+      ...p,
+      equipamento: v,
+      custo_unitario: planItem ? String(planItem.custo_unitario) : "",
+      quantidade: planItem ? String(planItem.quantidade) : "1",
+    }));
+  };
+
+  // Importar todos os itens do planejamento para o mês
+  const importarDoPlanejamento = async (who: string) => {
+    if (!who.trim() || savedPlan.length === 0) return;
+    setSavingReal(true);
+    const mesDate = realForm.mes + "-01";
+    const inserts = savedPlan.map(p => ({
+      projeto_id: projetoId, mes: mesDate,
+      equipamento: p.equipamento, custo_unitario: p.custo_unitario,
+      quantidade: p.quantidade, observacao: "Importado do planejamento",
+    }));
+    const { data: criados } = await supabase.from("logistica_realizado").insert(inserts).select();
+    if (criados) {
+      await supabase.from("logistica_historico").insert(
+        criados.map(c => ({ projeto_id: projetoId, item_id: c.id, tipo: "realizado", descricao_item: c.equipamento, campo: "Importado do planejamento", valor_anterior: "—", valor_novo: `R$ ${fmt(c.custo_unitario)}`, alterado_por: who, observacao: "" }))
+      );
+    }
+    setShowNovoReal(false); setRealWho(""); setSavingReal(false);
+    setMesFiltro(realForm.mes);
+    await load();
+  };
 
   // ── Realizado ─────────────────────────────────────────────────────────────
   const salvarReal = async () => {
@@ -353,9 +387,16 @@ export default function LogisticaInterna({ projetoId }: Props) {
       {/* ══════════════ CUSTO REAL ════════════════════════════════════════════ */}
       <section>
         <SectionHeader tipo="realizado" total={totalReal} totalLabel={`Total ${fmtMes(mesFiltro)}:`}>
-          <button onClick={() => setShowNovoReal(true)} className="btn-primary py-2 px-4 text-xs" style={{ background: "linear-gradient(135deg,#22c55e,#16a34a)" }}>
-            <Plus size={13} />Registrar
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => { setImportWho(""); setShowImportModal(true); }}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all"
+              style={{ background: "rgba(85,96,248,0.12)", border: "1px solid rgba(85,96,248,0.3)", color: "#7585fd" }}>
+              <Plus size={13} />Importar do planejamento
+            </button>
+            <button onClick={() => setShowNovoReal(true)} className="btn-primary py-2 px-4 text-xs" style={{ background: "linear-gradient(135deg,#22c55e,#16a34a)" }}>
+              <Plus size={13} />Avulso
+            </button>
+          </div>
         </SectionHeader>
 
         {/* Seletor de mês */}
@@ -384,7 +425,7 @@ export default function LogisticaInterna({ projetoId }: Props) {
               <div className="md:col-span-2">
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "#8890a8" }}>Equipamento *</label>
                 <EquipSelect value={realForm.equipamento} novo={realForm.equipamentoNovo}
-                  onChange={v => setRealForm(p => ({ ...p, equipamento: v }))}
+                  onChange={handleEquipChange}
                   onNovoChange={v => setRealForm(p => ({ ...p, equipamentoNovo: v }))} />
               </div>
               <div>
@@ -613,7 +654,36 @@ export default function LogisticaInterna({ projetoId }: Props) {
         </div>
       )}
 
-      {showEditRealModal && (
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }} onClick={e => e.target === e.currentTarget && setShowImportModal(false)}>
+          <div className="w-full max-w-md rounded-2xl animate-scaleIn" style={{ background: "#161822", border: "1px solid rgba(85,96,248,0.2)", boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
+            <div className="px-6 py-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <h3 className="text-base font-semibold" style={{ color: "#e8eaf0" }}>Importar do planejamento</h3>
+              <p className="text-xs mt-1" style={{ color: "#5a607a" }}>
+                Copia todos os {savedPlan.length} itens planejados para o mês <strong style={{ color: "#e8eaf0" }}>{fmtMes(realForm.mes)}</strong>.
+                Você pode editar individualmente depois.
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-medium mb-2" style={{ color: "#8890a8" }}>Mês de referência</label>
+                <input type="month" value={realForm.mes} onChange={e => setRealForm(p => ({ ...p, mes: e.target.value }))} className="input-field" style={{ color: "#e8eaf0" }} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-2" style={{ color: "#8890a8" }}>Registrado por *</label>
+                <input className="input-field" placeholder="Seu nome" value={importWho} onChange={e => setImportWho(e.target.value)} autoFocus />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setShowImportModal(false)} className="flex-1 py-2.5 rounded-xl text-sm font-medium" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "#8890a8" }}>Cancelar</button>
+                <button onClick={() => { importarDoPlanejamento(importWho); setShowImportModal(false); }} disabled={!importWho.trim() || savingReal}
+                  className="flex-1 btn-primary justify-center py-2.5" style={{ background: "linear-gradient(135deg,#5560f8,#4347c5)", opacity: !importWho.trim() ? 0.5 : 1 }}>
+                  {savingReal ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}Importar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }} onClick={e => e.target === e.currentTarget && setShowEditRealModal(false)}>
           <div className="w-full max-w-md rounded-2xl animate-scaleIn" style={{ background: "#161822", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
             <div className="px-6 py-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}><h3 className="text-base font-semibold" style={{ color: "#e8eaf0" }}>Confirmar edição</h3></div>
