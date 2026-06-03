@@ -17,6 +17,8 @@ const DEFAULTS = [
   { equipamento: "Manutenção",           custo_unitario: 50000, quantidade: 1 },
   { equipamento: "Combustível",          custo_unitario: 50000, quantidade: 1 },
   { equipamento: "Mob/desmob",           custo_unitario: 3000,  quantidade: 1 },
+];
+
 // ─── Equipamentos pré-definidos ───────────────────────────────────────────────
 const EQUIPAMENTOS = [
   "Pá carregadeira",
