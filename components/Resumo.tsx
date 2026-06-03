@@ -67,23 +67,25 @@ export default function Resumo({ projetoId }: Props) {
       { data: sgaPlan },
       { data: roloMats },
       { data: fretePlan },
+      { data: logisticaPlan },
     ] = await Promise.all([
       supabase.from("custos_diretos").select("receita, custo_unitario, custo_frete").eq("projeto_id", projetoId),
       supabase.from("sga_planejado").select("custo").eq("projeto_id", projetoId),
       supabase.from("rolo_materiais").select("custo_rolo").eq("projeto_id", projetoId),
       supabase.from("frete_planejado").select("custo_por_ton").eq("projeto_id", projetoId).single(),
+      supabase.from("logistica_planejado").select("custo_unitario, quantidade").eq("projeto_id", projetoId),
     ]);
 
-    // Custo direto planejado = receita% × produção prevista × custo_mp
     const planCustosDiretos = prodMesPrevista > 0
       ? (custosDiretos ?? []).reduce((s: number, r: any) => s + (r.receita / 100) * prodMesPrevista * (r.custo_unitario + r.custo_frete), 0)
-      : (custosDiretos ?? []).reduce((s: number, r: any) => s + 0, 0); // zero se sem produção
+      : (custosDiretos ?? []).reduce((s: number, r: any) => s + 0, 0);
 
     const planSGA = (sgaPlan ?? []).reduce((s: number, r: any) => s + r.custo, 0);
     const planRolo = (roloMats ?? []).reduce((s: number, r: any) => s + r.custo_rolo, 0);
     const planFrete = fretePlan?.custo_por_ton && prodMesPrevista > 0
       ? fretePlan.custo_por_ton * prodMesPrevista
       : 0;
+    const planLogistica = (logisticaPlan ?? []).reduce((s: number, r: any) => s + r.custo_unitario * r.quantidade, 0);
 
     let planPessoas = 0;
     if (pessoasPlano) {
@@ -121,13 +123,14 @@ export default function Resumo({ projetoId }: Props) {
       let realPessoas = 0;
       let realSGA = 0;
       let realFrete = 0;
+      let realLogistica = 0;
       let prodRealDoMes = 0;
 
       if (mesAtivo) {
         const mesStart = mesAtivo + "-01";
         const mesEnd = mesAtivo + "-31";
 
-        const [{ data: estReal }, { data: pessReal }, { data: sgaReal }, { data: prodMesReal }, { data: freteReal }] = await Promise.all([
+        const [{ data: estReal }, { data: pessReal }, { data: sgaReal }, { data: prodMesReal }, { data: freteReal }, { data: logisticaReal }] = await Promise.all([
           supabase.from("estoque_movimentacoes").select("custo_total").eq("projeto_id", projetoId)
             .eq("tipo", "CONSUMO").gte("data", mesStart).lte("data", mesEnd),
           supabase.from("pessoas_realizado").select("custo_total").eq("projeto_id", projetoId)
@@ -138,12 +141,15 @@ export default function Resumo({ projetoId }: Props) {
             .gte("data", mesStart).lte("data", mesEnd),
           supabase.from("frete_realizado").select("custo_cte").eq("projeto_id", projetoId)
             .gte("data_cte", mesStart).lte("data_cte", mesEnd),
+          supabase.from("logistica_realizado").select("custo_unitario, quantidade").eq("projeto_id", projetoId)
+            .gte("mes", mesStart).lte("mes", mesEnd),
         ]);
 
         realCustosDiretos = (estReal ?? []).reduce((s: number, r: any) => s + r.custo_total, 0);
         realPessoas = (pessReal ?? []).reduce((s: number, r: any) => s + r.custo_total, 0);
         realSGA = (sgaReal ?? []).reduce((s: number, r: any) => s + r.custo, 0);
         realFrete = (freteReal ?? []).reduce((s: number, r: any) => s + r.custo_cte, 0);
+        realLogistica = (logisticaReal ?? []).reduce((s: number, r: any) => s + r.custo_unitario * r.quantidade, 0);
         prodRealDoMes = (prodMesReal ?? []).reduce((s: number, r: any) => s + r.toneladas, 0);
       }
 
@@ -155,9 +161,9 @@ export default function Resumo({ projetoId }: Props) {
       { label: "SG&A", planejado: planSGA, real: realSGA, aba: "sga" },
       { label: "Rolo", planejado: planRolo, real: 0, aba: "rolo" },
       { label: "Frete", planejado: planFrete, real: realFrete, aba: "frete" },
+      { label: "Logística Interna", planejado: planLogistica, real: realLogistica, aba: "logistica-interna" },
       { label: "Utilidades", planejado: 0, real: 0, aba: "utilidades" },
       { label: "Manutenção", planejado: 0, real: 0, aba: "manutencao" },
-      { label: "Logística Interna", planejado: 0, real: 0, aba: "logistica-interna" },
       { label: "Outros Custos", planejado: 0, real: 0, aba: "outros-custos" },
     ]);
 
