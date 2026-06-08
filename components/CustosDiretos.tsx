@@ -62,6 +62,7 @@ export default function CustosDiretos({ projetoId }: Props) {
   const [saving, setSaving] = useState(false);
   const [historico, setHistorico] = useState<Historico[]>([]);
   const [showHistorico, setShowHistorico] = useState(false);
+  const [producaoNecessaria, setProducaoNecessaria] = useState(0);
   // Save modal
   const [showModal, setShowModal] = useState(false);
   const [modalData, setModalData] = useState<SaveModalData>({ alterado_por: "", observacao: "" });
@@ -77,10 +78,20 @@ export default function CustosDiretos({ projetoId }: Props) {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const { data: rows } = await supabase.from("custos_diretos").select("*").eq("projeto_id", projetoId).order("created_at", { ascending: true });
-    const { data: hist } = await supabase.from("custos_diretos_historico").select("*").eq("projeto_id", projetoId).order("alterado_em", { ascending: false }).limit(50);
+    const [{ data: rows }, { data: hist }, { data: prodPlan }] = await Promise.all([
+      supabase.from("custos_diretos").select("*").eq("projeto_id", projetoId).order("created_at", { ascending: true }),
+      supabase.from("custos_diretos_historico").select("*").eq("projeto_id", projetoId).order("alterado_em", { ascending: false }).limit(50),
+      supabase.from("producao_planejada").select("producao_total_entrega, perda, umidade").eq("projeto_id", projetoId).single(),
+    ]);
     if (rows && rows.length > 0) { setTaxa(rows[0].taxa_cambio ?? 5.80); setSaved(rows); } else { setSaved([]); }
     setHistorico(hist ?? []);
+    // Calcula produção necessária a partir da entrega
+    if (prodPlan?.producao_total_entrega && prodPlan.producao_total_entrega > 0) {
+      const yieldF = (1 - prodPlan.perda / 100) * (1 - prodPlan.umidade / 100);
+      setProducaoNecessaria(yieldF > 0 ? prodPlan.producao_total_entrega / yieldF : 0);
+    } else {
+      setProducaoNecessaria(0);
+    }
     setLoading(false);
   }, [projetoId]);
 
@@ -236,6 +247,15 @@ export default function CustosDiretos({ projetoId }: Props) {
         </div>
       </div>
 
+      {/* Produção necessária info */}
+      {producaoNecessaria > 0 && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
+          <span className="text-xs font-semibold" style={{ color: "#f59e0b" }}>🎯 Produção necessária:</span>
+          <span className="text-sm font-bold" style={{ color: "#f59e0b" }}>{fmt(producaoNecessaria, 2)} t</span>
+          <span className="text-xs" style={{ color: "#5a607a" }}>· A quantidade de cada material é calculada automaticamente como: produção necessária × receita%</span>
+        </div>
+      )}
+
       {/* Table */}
       <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
         <div className="overflow-x-auto">
@@ -252,7 +272,9 @@ export default function CustosDiretos({ projetoId }: Props) {
                 <tr><td colSpan={11} className="text-center py-12 text-sm" style={{ color: "#5a607a" }}>{isEditing ? 'Clique em "+ Linha" para adicionar.' : "Nenhum item cadastrado. Clique em Editar para começar."}</td></tr>
               ) : displayRows.map((row, idx) => {
                 const custoMP = row.custo_unitario + row.custo_frete;
-                const totalR = row.quantidade * custoMP;
+                const qtdCalc = producaoNecessaria > 0 && row.receita > 0 ? producaoNecessaria * (row.receita / 100) : row.quantidade;
+                const qtdDisplay = producaoNecessaria > 0 && row.receita > 0 ? qtdCalc : row.quantidade;
+                const totalR = qtdDisplay * custoMP;
                 const totalU = displayTaxa > 0 ? totalR / displayTaxa : 0;
                 return (
                   <tr key={row.id ?? `new-${idx}`} className="group" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
@@ -261,7 +283,14 @@ export default function CustosDiretos({ projetoId }: Props) {
                     <td className="px-2 py-2">{isEditing ? <input value={row.codigo} onChange={(e) => updateEditing(idx,"codigo",e.target.value)} className="w-24 bg-transparent outline-none text-xs px-2 py-1.5 rounded-lg focus:bg-white/5" style={{ color: "#e8eaf0" }} placeholder="000000" /> : <span className="text-xs px-2" style={{ color: "#8890a8" }}>{row.codigo || "—"}</span>}</td>
                     <td className="px-2 py-2">{isEditing ? <input value={row.descricao} onChange={(e) => updateEditing(idx,"descricao",e.target.value)} className="w-36 bg-transparent outline-none text-xs px-2 py-1.5 rounded-lg focus:bg-white/5" style={{ color: "#e8eaf0" }} placeholder="Descrição" /> : <span className="text-xs px-2 font-medium" style={{ color: "#e8eaf0" }}>{row.descricao}</span>}</td>
                     <td className="px-2 py-2">{isEditing ? <div className="flex items-center gap-1"><input type="number" value={row.receita} onChange={(e) => updateEditing(idx,"receita",parseFloat(e.target.value)||0)} className="w-14 bg-transparent outline-none text-xs px-2 py-1.5 rounded-lg text-right focus:bg-white/5" style={{ color: "#e8eaf0" }} /><span className="text-xs" style={{ color: "#5a607a" }}>%</span></div> : <span className="text-xs px-2" style={{ color: "#8890a8" }}>{fmt(row.receita,0)}%</span>}</td>
-                    <td className="px-2 py-2">{isEditing ? <input type="number" value={row.quantidade} onChange={(e) => updateEditing(idx,"quantidade",parseFloat(e.target.value)||0)} className="w-24 bg-transparent outline-none text-xs px-2 py-1.5 rounded-lg text-right focus:bg-white/5" style={{ color: "#e8eaf0" }} /> : <span className="text-xs px-2 text-right block" style={{ color: "#e8eaf0" }}>{fmt(row.quantidade,4)}</span>}</td>
+                    <td className="px-2 py-2">{isEditing ? <input type="number" value={row.quantidade} onChange={(e) => updateEditing(idx,"quantidade",parseFloat(e.target.value)||0)} className="w-24 bg-transparent outline-none text-xs px-2 py-1.5 rounded-lg text-right focus:bg-white/5" style={{ color: "#e8eaf0" }} /> :
+                      producaoNecessaria > 0 && row.receita > 0 ? (
+                        <div className="px-2">
+                          <span className="text-xs font-semibold block text-right" style={{ color: "#f59e0b" }}>{fmt(qtdCalc, 2)} t</span>
+                          <span className="text-xs block text-right" style={{ color: "#3d425a" }}>({row.receita}% × prod.)</span>
+                        </div>
+                      ) : <span className="text-xs px-2 text-right block" style={{ color: "#e8eaf0" }}>{fmt(row.quantidade,4)}</span>
+                    }</td>
                     <td className="px-2 py-2">{isEditing ? <input type="number" value={row.custo_unitario} onChange={(e) => updateEditing(idx,"custo_unitario",parseFloat(e.target.value)||0)} className="w-28 bg-transparent outline-none text-xs px-2 py-1.5 rounded-lg text-right focus:bg-white/5" style={{ color: "#e8eaf0" }} /> : <span className="text-xs px-2 text-right block" style={{ color: "#e8eaf0" }}>{fmt(row.custo_unitario)}</span>}</td>
                     <td className="px-2 py-2">{isEditing ? <input type="number" value={row.custo_frete} onChange={(e) => updateEditing(idx,"custo_frete",parseFloat(e.target.value)||0)} className="w-28 bg-transparent outline-none text-xs px-2 py-1.5 rounded-lg text-right focus:bg-white/5" style={{ color: "#0ea5e9" }} /> : <span className="text-xs px-2 text-right block" style={{ color: "#0ea5e9" }}>{fmt(row.custo_frete)}</span>}</td>
                     <td className="px-3 py-2 text-right"><span className="text-xs font-semibold" style={{ color: "#22c55e" }}>{fmt(custoMP)}</span></td>
