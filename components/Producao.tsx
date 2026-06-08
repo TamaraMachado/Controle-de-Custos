@@ -16,6 +16,7 @@ interface Planejado {
   disponibilidade: number;
   umidade: number;
   perda: number;
+  producao_total_entrega?: number;
   salvo_por?: string;
   observacao?: string;
   updated_at?: string;
@@ -98,7 +99,7 @@ export default function Producao({ projetoId }: Props) {
 
   // Planejado form
   const [estadoPlan, setEstadoPlan] = useState<"novo" | "salvo" | "editando">("novo");
-  const [planForm, setPlanForm] = useState({ prod_hora: "", disponibilidade: "", umidade: "", perda: "" });
+  const [planForm, setPlanForm] = useState({ prod_hora: "", disponibilidade: "", umidade: "", perda: "", producao_total_entrega: "" });
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [planWho, setPlanWho] = useState("");
   const [planObs, setPlanObs] = useState("");
@@ -182,6 +183,7 @@ export default function Producao({ projetoId }: Props) {
     const payload = {
       projeto_id: projetoId,
       prod_hora: pfh, disponibilidade: pfDisp, umidade: pfUm, perda: pfPerda,
+      producao_total_entrega: parseFloat(planForm.producao_total_entrega) || 0,
       salvo_por: planWho, observacao: planObs, updated_at: new Date().toISOString(),
     };
     if (estadoPlan === "editando" && planejado?.id) {
@@ -204,7 +206,7 @@ export default function Producao({ projetoId }: Props) {
 
   const iniciarEditPlan = () => {
     if (!planejado) return;
-    setPlanForm({ prod_hora: String(planejado.prod_hora), disponibilidade: String(planejado.disponibilidade), umidade: String(planejado.umidade), perda: String(planejado.perda) });
+    setPlanForm({ prod_hora: String(planejado.prod_hora), disponibilidade: String(planejado.disponibilidade), umidade: String(planejado.umidade), perda: String(planejado.perda), producao_total_entrega: String(planejado.producao_total_entrega ?? "") });
     setEstadoPlan("editando");
   };
 
@@ -342,25 +344,89 @@ export default function Producao({ projetoId }: Props) {
             ))}
           </div>
 
+          {/* Campo: produção total a entregar */}
+          <div className="pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+            <div className="max-w-xs">
+              <label className="block text-xs font-medium mb-2" style={{ color: "#f59e0b" }}>
+                🎯 Produção total a entregar (t)
+              </label>
+              {(estadoPlan === "novo" || estadoPlan === "editando") ? (
+                <input type="number" step="1"
+                  value={planForm.producao_total_entrega}
+                  onChange={e => setPlanForm(p => ({ ...p, producao_total_entrega: e.target.value }))}
+                  className="input-field text-sm" placeholder="Ex: 4000"
+                  style={{ borderColor: "rgba(245,158,11,0.4)" }} />
+              ) : (
+                <div className="input-field text-sm font-semibold" style={{ color: "#f59e0b", cursor: "default", borderColor: "rgba(245,158,11,0.3)" }}>
+                  {planejado?.producao_total_entrega ? `${fmt(planejado.producao_total_entrega, 0)} t` : "—"}
+                </div>
+              )}
+              <p className="text-xs mt-1" style={{ color: "#5a607a" }}>Volume final que o cliente receberá (após perdas e umidade)</p>
+            </div>
+          </div>
+
           {/* Resultados calculados */}
           {(() => {
             const p = estadoPlan === "salvo" && planejado ? planejado : { prod_hora: pfh, disponibilidade: pfDisp, umidade: pfUm, perda: pfPerda };
             const prodDia = calcProdDia(p as Planejado);
             const prodMes = calcProdMes(p as Planejado, escalaNome);
             if (prodDia === 0) return null;
+
+            // Produção total a entregar
+            const entrega = estadoPlan === "salvo"
+              ? (planejado?.producao_total_entrega ?? 0)
+              : (parseFloat(planForm.producao_total_entrega) || 0);
+
+            // Produção necessária = entrega / yield (considerando perdas e umidade)
+            const yieldFactor = (1 - (p as Planejado).perda / 100) * (1 - (p as Planejado).umidade / 100);
+            const prodNecessaria = yieldFactor > 0 && entrega > 0 ? entrega / yieldFactor : 0;
+
+            // Tempo estimado
+            const diasEstimados = prodDia > 0 && entrega > 0 ? entrega / prodDia : 0;
+            const mesesEstimados = diasEstimados > 0 ? diasEstimados / (DIAS_POR_ESCALA[escalaNome] ?? 30) : 0;
+
             return (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
-                {[
-                  { label: "Produção/dia prevista", value: `${fmt(prodDia, 2)} t/dia`, color: "#7585fd" },
-                  { label: "Dias produtivos/mês", value: `${DIAS_POR_ESCALA[escalaNome] ?? 30} dias`, color: "#8890a8" },
-                  { label: "Produção/mês prevista", value: `${fmt(prodMes, 2)} t/mês`, color: "#e8eaf0", big: true },
-                  { label: "Eficiência líquida", value: `${fmt(((p as Planejado).disponibilidade/100) * (1-(p as Planejado).perda/100) * (1-(p as Planejado).umidade/100) * 100, 2)} %`, color: "#22c55e" },
-                ].map(item => (
-                  <div key={item.label} className="rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                    <p className="text-xs mb-1" style={{ color: "#5a607a" }}>{item.label}</p>
-                    <p className={`font-bold ${item.big ? "text-xl" : "text-base"}`} style={{ color: item.color }}>{item.value}</p>
+              <div className="space-y-3 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+                {/* Cards de produção base */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {[
+                    { label: "Produção/dia prevista", value: `${fmt(prodDia, 2)} t/dia`, color: "#7585fd" },
+                    { label: "Dias produtivos/mês", value: `${DIAS_POR_ESCALA[escalaNome] ?? 30} dias`, color: "#8890a8" },
+                    { label: "Produção/mês prevista", value: `${fmt(prodMes, 2)} t/mês`, color: "#e8eaf0", big: true },
+                    { label: "Eficiência líquida", value: `${fmt(yieldFactor * (p as Planejado).disponibilidade, 2)} %`, color: "#22c55e" },
+                  ].map(item => (
+                    <div key={item.label} className="rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                      <p className="text-xs mb-1" style={{ color: "#5a607a" }}>{item.label}</p>
+                      <p className={`font-bold ${(item as any).big ? "text-xl" : "text-base"}`} style={{ color: item.color }}>{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Cards de entrega — só aparecem se houver valor */}
+                {entrega > 0 && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 rounded-xl" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)" }}>
+                    <div>
+                      <p className="text-xs mb-1" style={{ color: "#5a607a" }}>Produção a entregar</p>
+                      <p className="text-xl font-bold" style={{ color: "#f59e0b" }}>{fmt(entrega, 0)} t</p>
+                      <p className="text-xs mt-0.5" style={{ color: "#5a607a" }}>produto final</p>
+                    </div>
+                    <div>
+                      <p className="text-xs mb-1" style={{ color: "#5a607a" }}>Produção necessária</p>
+                      <p className="text-xl font-bold" style={{ color: "#ef4444" }}>{fmt(prodNecessaria, 0)} t</p>
+                      <p className="text-xs mt-0.5" style={{ color: "#5a607a" }}>bruta (c/ perdas e umidade)</p>
+                    </div>
+                    <div>
+                      <p className="text-xs mb-1" style={{ color: "#5a607a" }}>Tempo estimado</p>
+                      <p className="text-xl font-bold" style={{ color: "#f59e0b" }}>{fmt(diasEstimados, 1)} dias</p>
+                      <p className="text-xs mt-0.5" style={{ color: "#5a607a" }}>{fmt(mesesEstimados, 2)} meses</p>
+                    </div>
+                    <div>
+                      <p className="text-xs mb-1" style={{ color: "#5a607a" }}>Diferença (perdas+umidade)</p>
+                      <p className="text-xl font-bold" style={{ color: "#ef4444" }}>+{fmt(prodNecessaria - entrega, 0)} t</p>
+                      <p className="text-xs mt-0.5" style={{ color: "#5a607a" }}>{fmt((prodNecessaria / entrega - 1) * 100, 2)}% a mais</p>
+                    </div>
                   </div>
-                ))}
+                )}
               </div>
             );
           })()}
