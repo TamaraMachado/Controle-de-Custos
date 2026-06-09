@@ -331,7 +331,7 @@ export default function Rolo({ projetoId }: Props) {
             <div>
               <h3 className="text-sm font-semibold" style={{ fontFamily: "var(--font-sora)", color: "#e8eaf0" }}>{tabAtiva}</h3>
               <p className="text-xs" style={{ color: "#5a607a" }}>
-                {estado === "novo" ? "Valores padrão — confirme para salvar" : estado === "editando" ? "Editando valores" : "Dados salvos para este projeto"}
+                {estado === "novo" ? "Valores padrão teste — confirme para salvar" : estado === "editando" ? "Editando valores" : "Dados salvos para este projeto"}
               </p>
             </div>
           </div>
