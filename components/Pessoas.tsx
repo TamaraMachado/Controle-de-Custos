@@ -10,7 +10,8 @@ import {
 
 interface Escala { id: string; nome: string; }
 interface Planta { id: string; nome: string; }
-interface TemplateRow { id?: string; funcao_id?: string; nome: string; quantidade: number; custo: number; }
+interface Funcao { id: string; nome: string; custo_unitario: number; }
+interface TemplateRow { id?: string; funcao_id?: string; nome: string; quantidade: number; custo: number; isNova?: boolean; }
 interface Plano { id: string; escala_id: string; planta_id: string; salvo_por: string; observacao: string; updated_at: string; }
 interface PlanoHistorico {
   id: string; escala_anterior: string; planta_anterior: string;
@@ -30,6 +31,7 @@ const fmtMes = (iso: string) => { const [y,m]=iso.split("-"); const meses=["Jan"
 export default function Pessoas({ projetoId }: Props) {
   const [escalas, setEscalas] = useState<Escala[]>([]);
   const [plantas, setPlantas] = useState<Planta[]>([]);
+  const [funcoes, setFuncoes] = useState<Funcao[]>([]);
   const [estado, setEstado] = useState<Estado>("carregando");
   const [plano, setPlano] = useState<Plano | null>(null);
   const [planoRows, setPlanoRows] = useState<TemplateRow[]>([]);
@@ -62,12 +64,14 @@ export default function Pessoas({ projetoId }: Props) {
 
   // ── Load ──────────────────────────────────────────────────────────────────
   const loadMeta = useCallback(async () => {
-    const [{ data: e }, { data: p }] = await Promise.all([
+    const [{ data: e }, { data: p }, { data: f }] = await Promise.all([
       supabase.from("pessoas_escalas").select("*").order("nome"),
       supabase.from("pessoas_plantas").select("*").order("nome"),
+      supabase.from("pessoas_funcoes").select("*").order("nome"),
     ]);
     setEscalas(e ?? []);
     setPlantas(p ?? []);
+    setFuncoes(f ?? []);
   }, []);
 
   const loadPlano = useCallback(async () => {
@@ -150,7 +154,7 @@ export default function Pessoas({ projetoId }: Props) {
     setTemplateRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
 
   const addTemplateRow = () =>
-    setTemplateRows(prev => [...prev, { nome: "", quantidade: 1, custo: 0 }]);
+    setTemplateRows(prev => [...prev, { nome: "", quantidade: 1, custo: 0, isNova: true }]);
 
   const removeTemplateRow = (idx: number) =>
     setTemplateRows(prev => prev.filter((_, i) => i !== idx));
@@ -226,6 +230,7 @@ export default function Pessoas({ projetoId }: Props) {
 
     setShowSalvarModal(false); setSaving(false);
     setEscalaId(""); setPlantaId(""); setTemplateRows([]);
+    await loadMeta();
     await loadPlano();
   };
 
@@ -336,10 +341,39 @@ export default function Pessoas({ projetoId }: Props) {
                   </td></tr>
                 ) : templateRows.map((row, idx) => (
                   <tr key={idx} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                    <td className="px-3 py-2">
-                      <input value={row.nome} onChange={e => updateTemplateRow(idx, "nome", e.target.value)}
-                        className="w-44 bg-transparent outline-none px-2 py-1 rounded focus:bg-white/5"
-                        style={{ color: "#e8eaf0" }} placeholder="Ex: Operador de processo" />
+                    <td className="px-3 py-2 min-w-56">
+                      {/* Select de função com opção nova */}
+                      <select
+                        value={row.isNova ? "__nova__" : (row.funcao_id ?? "__nova__")}
+                        onChange={e => {
+                          if (e.target.value === "__nova__") {
+                            updateTemplateRow(idx, "funcao_id", undefined as any);
+                            updateTemplateRow(idx, "nome", "");
+                            updateTemplateRow(idx, "isNova", true as any);
+                          } else {
+                            const f = funcoes.find(f => f.id === e.target.value);
+                            if (f) {
+                              setTemplateRows(prev => prev.map((r, i) => i === idx
+                                ? { ...r, funcao_id: f.id, nome: f.nome, custo: f.custo_unitario, isNova: false }
+                                : r));
+                            }
+                          }
+                        }}
+                        className="w-full bg-transparent outline-none px-2 py-1 rounded focus:bg-white/5 text-xs"
+                        style={{ color: "#e8eaf0" }}>
+                        <option value="">Selecione uma função...</option>
+                        {funcoes.map(f => (
+                          <option key={f.id} value={f.id}>{f.nome}</option>
+                        ))}
+                        <option value="__nova__">+ Nova função</option>
+                      </select>
+                      {/* Campo de texto se for nova função */}
+                      {row.isNova && (
+                        <input value={row.nome} onChange={e => updateTemplateRow(idx, "nome", e.target.value)}
+                          className="w-full bg-white/5 outline-none px-2 py-1 rounded mt-1 text-xs border"
+                          style={{ color: "#e8eaf0", borderColor: "rgba(85,96,248,0.4)" }}
+                          placeholder="Nome da nova função" autoFocus />
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <input type="number" min="0" value={row.quantidade} onChange={e => updateTemplateRow(idx, "quantidade", parseInt(e.target.value)||0)}
